@@ -14,21 +14,16 @@ app.get('/', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-    socket.on('connect_failed', function () {
-        document.write("Sorry, there seems to be an issue with the connection!");
-    })
-
     socket.join('game');
     data.players[socket.id] = 'connected';
     console.log(socket.id + ' connected');
 
     socket.on('disconnect', () => {
-        data.players[socket.id] = 'disconnected';
+        data.players[socket.id] = 'connected';
         console.log(socket.id + ' disconnected');
     });
 
     socket.on('getApples', () => {
-        console.log('getting apples')
         socket.emit("getApples", data.apples);
     });
 
@@ -45,6 +40,22 @@ io.on('connection', (socket) => {
 
         io.to('game').emit("join", { tails: { [socket.id]: data.tails[socket.id] }, heads: { [socket.id]: data.positions[socket.id] }, controls: { [socket.id]: data.controls[socket.id] } });
         console.log(socket.id + ' joined the table');
+    });
+
+    socket.on('disconnectGame', () => {
+        data.positions[socket.id] = {};
+        data.controls[socket.id] = {};
+        data.grows[socket.id] = 0;
+        data.tails[socket.id] = [];
+        data.players[socket.id] = 'connected';
+
+        io.to('game').emit("disconnectGame", socket.id);
+        console.log(socket.id + ' disconnected the game');
+    });
+
+    socket.on('resetGame', () => {
+        resetGame();
+        console.log(socket.id + ' reset the game');
     });
 
     socket.on('controls', (control) => {
@@ -66,6 +77,24 @@ io.on('connection', (socket) => {
         data.controls[socket.id].buffer = control;
     });
 });
+
+resetGame = () => {
+    data = {
+        apples: [],
+        players: data.players,
+        controls: {},
+        positions: {},
+        tails: {},
+        grows: {}
+    }
+
+    data.players = {};
+    // should set all players back to connected
+    // socket.clients();
+    // data.players[socket.id] = 'connected';
+
+    io.to('game').emit("resetGame");
+}
 
 var data = {
     apples: [],
@@ -92,7 +121,7 @@ startTimer = () => {
         let currentTimeStamp = new Date().getTime();
         moveAll();
 
-        if (data.apples.length === 0 || lastAppleTimestamp + 1000 * 5 < currentTimeStamp) {
+        if (getPlayersPlayingCount() > 0 && (data.apples.length === 0 || lastAppleTimestamp + 1000 * 5 < currentTimeStamp)) {
             addApple();
             lastAppleTimestamp = currentTimeStamp;
         }
@@ -146,7 +175,7 @@ moveAll = () => {
         }
 
         data.tails[playerId].push(data.positions[playerId]);
-        console.log('tailLength', data.tails[playerId].length)
+
         if (Object.values(data.apples).filter(pos => pos.x === newPos.x && pos.y === newPos.y).length !== 0) {
             removeApple(newPos);
             data.grows[playerId] = 1;
@@ -157,28 +186,34 @@ moveAll = () => {
     });
 }
 
+getPlayersPlayingCount = () => {
+    return Object.keys(Object.fromEntries(Object
+        .entries(data.players)
+        .filter(([key]) => data.players[key] === 'joined'))).length;
+}
+
 getPlayersControls = () => {
     return Object.fromEntries(Object
         .entries(data.controls)
-        .filter(([key]) => data.players[key] == 'joined'));
+        .filter(([key]) => data.players[key] === 'joined'));
 }
 
 getPlayersTails = () => {
     return Object.fromEntries(Object
         .entries(data.tails)
-        .filter(([key]) => data.players[key] == 'joined'));
+        .filter(([key]) => data.players[key] === 'joined'));
 }
 
 getPlayersPositions = () => {
     return Object.fromEntries(Object
         .entries(data.positions)
-        .filter(([key]) => data.players[key] == 'joined'));
+        .filter(([key]) => data.players[key] === 'joined'));
 }
 
 getPlayersGrowths = () => {
     return Object.fromEntries(Object
         .entries(data.grows)
-        .filter(([key]) => data.players[key] == 'joined'));
+        .filter(([key]) => data.players[key] === 'joined'));
 }
 
 getRandomInt = (min, max) => {
