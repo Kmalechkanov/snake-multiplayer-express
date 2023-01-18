@@ -18,6 +18,10 @@ io.on('connection', (socket) => {
     data.players[socket.id] = 'connected';
     console.log(socket.id + ' connected');
 
+    socket.on('getId', () => {
+        socket.emit("getId", socket.id);
+    });
+
     socket.on('disconnect', () => {
         data.players[socket.id] = 'connected';
         console.log(socket.id + ' disconnected');
@@ -43,13 +47,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnectGame', () => {
-        data.positions[socket.id] = {};
-        data.controls[socket.id] = {};
-        data.grows[socket.id] = 0;
-        data.tails[socket.id] = [];
-        data.players[socket.id] = 'connected';
-
-        io.to('game').emit("disconnectGame", socket.id);
+        removeSnake(socket.id);
         console.log(socket.id + ' disconnected the game');
     });
 
@@ -153,6 +151,16 @@ removeApple = (apple) => {
     io.emit("removeApple", apple);
 }
 
+removeSnake = (id) => {
+    data.positions[id] = {};
+    data.controls[id] = {};
+    data.grows[id] = 0;
+    data.tails[id] = [];
+    data.players[id] = 'connected';
+
+    io.to('game').emit("disconnectGame", id);
+}
+
 moveAll = () => {
     Object.keys(getPlayersPositions()).forEach(playerId => {
         let posRef = data.positions[playerId];
@@ -176,14 +184,40 @@ moveAll = () => {
 
         data.tails[playerId].push(data.positions[playerId]);
 
-        if (Object.values(data.apples).filter(pos => pos.x === newPos.x && pos.y === newPos.y).length !== 0) {
+        if (overApple(newPos.x, newPos.y)) {
             removeApple(newPos);
             data.grows[playerId] = 1;
-        } else {
+        }
+        else if (overSnake(playerId, newPos.x, newPos.y)) {
+            removeSnake(playerId);
+        }
+        else {
             data.tails[playerId].shift();
         }
         data.positions[playerId] = newPos;
     });
+}
+
+overApple = (x, y) => {
+    return Object.values(data.apples).filter(pos => pos.x === x && pos.y === y).length !== 0
+}
+
+overSnake = (playerId, x, y) => {
+    let tails = Object.fromEntries(Object
+        .entries(data.tails)
+        .filter(([key]) => data.players[key] === 'joined' && data.tails[key].filter(tail => {
+            if (tail.x === x && tail.y === y) {
+                console.log(tail.x === x && tail.y === y);
+
+            }
+            return tail.x === x && tail.y === y
+        }).length !== 0));
+
+    let heads = Object.fromEntries(Object
+        .entries(data.positions)
+        .filter(([key, value]) => data.players[key] === 'joined' && key !== playerId && value.x === x && value.y === y));
+
+    return Object.keys(heads).length > 0 || Object.keys(tails).length > 0;
 }
 
 getPlayersPlayingCount = () => {
